@@ -1,0 +1,366 @@
+\documentclass[11pt]{article}
+\usepackage{amsfonts,amssymb,amsthm,eucal,amsmath}
+\usepackage{graphicx}
+\usepackage[T1]{fontenc}
+\usepackage{latexsym,url}
+\usepackage{array}
+\usepackage{subfig}
+\usepackage{comment}
+\usepackage{color}
+
+\newcommand{\myspace}{\vspace{.1in}\noindent}
+\newcommand{\mymyspace}{\vspace{.1in}}
+\usepackage[inner=30mm, outer=30mm, textheight=225mm]{geometry}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{prop}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{defn}[theorem]{Definition}
+\newtheorem{notn}[theorem]{Notation}
+\newtheorem{cond}[theorem]{Condition}
+\newtheorem{ex}[theorem]{Example}
+\newtheorem{rmk}[theorem]{Remark}
+\newcommand{\co}{\negthinspace :}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\C}{\mathbb{C}}
+\newcommand{\CP}{\mathbb{CP}}
+\newcommand{\PSL}{\mathrm{PSL}_2(\mathbb{C})}
+\newcommand{\area}{\operatorname{area}}
+\newcommand{\diag}{\operatorname{diag}}
+\newcommand{\nt}{\negthinspace}
+\newcommand{\TODO}{{\color{red} TODO}}
+
+\title{A linear time direct solver for convex tridiagonal quadratic programs with bound constraints and related problems}
+\author{Geoffrey Irving\thanks{Email: irving@naml.us, Otherlab, San Francisco, CA, United States}}
+\date{Version 1, \today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a linear time direct solver for symmetric positive definite tridiagonal quadratic programming with bound constraints, and for other nonlinear convex programs with similar structure.
+In particular, it applies to minimum length paths through triangle strips, the original motivation of this work.  The algorithm is an active set method similar to the standard approach for
+convex hull of a simple polygon: add one vertex at a time, then walk backwards eliminating concave vertices as far as necessary.
+\end{abstract}
+
+\section{Tridiagonal quadratic programming}
+
+\TODO: For shortest paths in polygons, cite Lee and Preparata, Euclidean Shortest Paths in the Presence of Rectilinear Barriers.
+
+Consider a symmetric positive definite tridiagonal quadratic program with bound constraints of the form
+\begin{align} \label{qp}
+\begin{array}{cc}
+\min          \qquad& \frac{1}{2} x^T A x + b^T x \\
+\textrm{s.t.} & l \le x \le u
+\end{array}
+\end{align}
+where $x,l,u \in \R^n$ and $A$ is symmetric positive definite tridiagonal.  The problem is feasible iff $l \le u$, and can be solved efficiently using an interior point method such as \TODO.  Each Newton iteration
+requires only an $O(n)$ tridiagonal direct solve; since interior point methods typically take between $O(1)$ and $O(\log n)$ iterations to converge (\TODO: reference), this results in a quite fast method overall.
+However, this peformance is not guaranteed (\TODO: is it?), and any iterative method will require more iterations if greater accuracy is required.
+
+In this paper, we present a linear time direct solver specialized for problems of the form (\ref{qp}), as well as other nonlinear convex optimization problems of similar form.  We first rewrite the quadratic
+energy function as the sum of energies of adjacent variables using the Cholesky decomposition $A = LL^T$:
+\begin{align*}
+E &= \frac{1}{2} x^T A x + b^T x  \\
+  &= \frac{1}{2} x^T L L^T x + b^T x \\ 
+  &= \frac{1}{2} \left\|L^T x + L^{-1}b \right\|^2 + \textrm{const} \\
+  &= \sum_{i=0}^{n-1} f_{i,i+1}(x_i,x_{i+1}) + \textrm{const}
+\end{align*}
+where
+\begin{align} \label{quadratic}
+f_{i,i+1}(x_i,x_{i+1}) = \frac{1}{2} (L_{i,i} x_i + L_{i+1,i} x_{i+1} + c_i)^2.
+\end{align}
+Here we have introduced sentinels $x_{n+1} = L_{n+1,n} = 0$ for notational simplicity.  For any $0 \le i < k \le n$, we define a function $f_{i,k}$ by partially minimizing over all variables between $x_i$ and $x_k$:
+$$f_{i,k}(x_i,x_k) = \min_{x_{i+1}, \ldots, x_{k-1}} \sum_{i \le j < k} f_{j,j+1}(x_j,x_{j+1}).$$
+Since this minimization produces a linear system for the intermediate $x_j$, and substituting a linear function into a quadratic gives a quadratic, each $f_{i,k}$ is of the form (\ref{quadratic}) up to a constant,
+and we can combine $f_{i,j}$ and $f_{j,k}$ into $f_{i,k}$ in $O(1)$ time.  Intuitively, each $f_{i,k}$ encodes the set of optimal paths from $x_j$ to $x_k$ when bound constraints are ignored.  Note that $f_{0,n} = E$
+is the entire energy function.
+
+\subsection{Algorithm}
+
+The algorithm is as follows: in reverse order from $i = n-1$ to $0$, we compute two partial minimizers of $f_{i,n}(x_i,x_n)$, one for each of $x_i = l_i, u_i$, stored as two sets of active constraints
+$S_l^i, S_u^i \subset \{i+1, \ldots, n-1\}$.
+Note that $S_l^i, S_u^i$ implicitly encode $x_j$ for any $j \in S_l^i \cup S_u^i$; we \emph{do not} keep track of any other $x_j$, as this would result in quadratic time complexity.  Instead, for each adjacent pair
+$j,k \in S_l^i \cup S_u^i$, we store $f_{j,k}$.
+
+Rewind.  Let's try to do this in forward order, since I think it's more intuitive.  So, at step $i$ we want two partial minimizers of $f_{-1,i}(x_i)$, one for each of $x_i = l_i, u_i$, stored as two sets of active
+constraints $S_l^i, S_u^i \subset S$, where $S$ is the set of all constraints.  First assume that for $i < j < k$, the optimal $x_j$ is an increasing function of $x_i, x_k$.  Then if $j \notin S_l^i \cup S_u^i$, 
+
+
+\begin{comment}
+Min and argmin of convex functions.  Let f(x,y) be a strictly convex function bounded from below.  Define
+$$g(x) = min_y f(x,y)$$
+$$h(x) = argmin_y f(x,y)$$
+We have $f(x,h(x)) = g(x)$.  Consider x0, x1 = (x0+x2)/2, x2.  We have
+
+  g(x1) <= f(x1,(h(x0)+h(x2))/2) <= 1/2 (f(x0,h(x0)) + f(x2,h(x2))) <= 1/2 (g(x0)+g(x2))
+
+so g is convex.  What about h?  Assume that y is 1D (y in R).  Conjecture: h is monotonic.  Assume otherwise: that h(x1) < h(x0) < h(x2) say.  Specifically, assume
+
+  h(x0) = a h(x1) + (1-a) h(x2),  0 < a < 1
+
+Then
+
+  g(x1,h(x1))
+
+  g(x1,h(x1)) <= 1/2 (g(x0,h(x1)) + g(x2,h(x1)))
+
+  g(x1,h(x0)) <= 1/2 (g(x0,h(x0)) + g(x2,h(x0))) <= 1/2 (a g(x0,h(x1)) + (1-a) g(x0,h(x2)) + a g(x2,h(x0)) + (1-a) 
+
+  g(x0,h(x0)) <= a g(x0,h(x1)) + (1-a) g(x0,h(x2))
+
+  g(x1,h(x1)) <= a
+
+Assume both g and h are smooth.  We have
+
+  gy(x,h(x)) = 0
+  d/dx gy(x,h(x)) = 0
+  gxy(x,h(x)) + gyy(x,h(x)) hx(x) = 0
+  hx = -gxy/gyy
+
+Convexity says
+
+$$
+  gxx >= 0
+  gyy >= 0
+  gxx gyy - gxy^2 >= 0
+
+  g(x,y) = x^2 + y^2 + e sin (x+y)
+$$
+
+For small e, g(x,y) is convex, but we have
+$$
+  gx = 2x + e cos (x+y)
+  gxy = -e sin (x+y)
+  gyy = 2y - e sin (x+y)
+  hx = -gxy/gyy = -e sin (x+y) / (2y - e sin (x+y)) = 1 / (1 - 2/e y/sin(x+y))
+
+  gy = 2y + e cos (x+y)
+  -2/e y/cos(x+y) = 0
+  
+$$
+
+
+
+\end{comment}
+
+\begin{comment}
+
+However, problem (\ref{qp}) is 
+
+and interior point methods often take a roughly constant number of iterations independent of problem size (ref: \TODO) 
+
+of the tridiagonal 
+structure 
+
+an be used to solve (\ref{qp}) efficiently while taking advantage
+of the special structure 
+
+
+Using the Cholesky factorization $A = LL^T$, we can rewrite the energy function as
+
+
+Consider a ``tridiagonal'' convex optimization problem of the form
+\begin{align} \label{problem}
+\min          & \sum_{i=0}^n f_i(x_{i-1},x_i) \\
+\textrm{s.t.} & l_i \le x_i \le u_i, i = 0, \ldots, n-1
+\end{align}
+where $x = (x_0, \ldots, x_{n-1}) \in \R$, $x_0, x_n$ are fixed sentinel values, and each $f_i$ is a convex functions of two variables.
+
+
+ chosen from some class of convex functions $F$.  Our algorithm will
+apply whenever $F$ satisfies the following closure property:
+\begin{defn} Call a class $F$ of 2-variable convex functions \emph{middle closed} if whenever $f,g \in F$, we have $h \in F$ for $h$ defined by
+$$h(x,z) = \min_{y \in \R} f(x,y)+g(y,z).$$
+\end{defn}
+Thus, $F$ is middle closed if we can eliminate intermediate variables without losing the problem structure.  Our main examples are
+\begin{enumerate}
+\item Quadratic programming: Any tridiagonal positive definite quadratic energy function can be put in the desired form via Cholesky decomposition:
+$$ E = \frac{1}{2} x^T A x + b^T x = \frac{1}{2} x^T L L^T x + b^T x = \frac{1}{2} |L^T x + L^{-1}b|^2 + \textrm{const}$$
+which fits (\ref{problem}) where $F = F_q$ is the class of squared affine functions of two variables.  $F_q$ is middle closed since given $f(x,y) + g(y,z)$, differentiating gives a linear equation
+for $y$, and substituting a linear function into the quadratic sum gives a quadratic.
+\item Shortest paths in triangle or quad strips: Consider a sequence of segments $Y_i + x_i Z_i$ parameterized by $0 \le x_i \le 1$ with $Y_i,Z_i \in \R^k$ for some ambient space $\R^k$, using
+length for energy:
+$$ E = \sum_i \left| Y_{i-1} + x_{i-1} Z_{i-1} - Y_i + x_i Z_i \right| $$
+The resulting class $F = F_s$ of square roots of quadratics is middle closed by 
+
+f(x,y) = |a + b'x + c'y| = |p(x,y)|
+g(y,z) = |d + e'y + v'z| = |q(y,z)|
+
+d/dy (f(x,y)+g(y,z)) = p(x,y).c/|p(x,y)| + q(y,z).e/|q(x,y)| = 0
+(p(x,y).c) |q(x,y)| = (q(y,z).e) |p(x,y)|
+
+By rotating and scaling c or e s.t. c = e, we get that y = linear(x,z).  Plugging this back in, we get
+
+h(x,z) = |r0(x,z)| + |r1(x,z)|
+
+Now, if c = e, we happen to know that r0 and r1 are parallel, and the lengths simply add.  Unfortunately, in the general Snell's law case, 
+
+\item
+\end{enumerate}
+
+\end{comment}
+
+\begin{comment}
+
+// Consider a tridiagonal box constrainted convex quadratic program of the form:
+//
+//   min  x'Ax/2 - b'x
+//   s.t. l <= x <= u
+//
+// where A is SPD tridiagonal.  We want to solve this exactly in linear time,
+//
+// First, compute the Cholesky decomposition A = LL'.  Up to constants, the energy has the form
+//
+//   E = x'Ax/2 - b'x = |L'x - c|^2/2 = x'LL'x/2 - c'L'x
+//   Lc = b  or  c = L^{-1} b
+//
+// So now
+//
+//   E = |L'x - c|^2/2 = 1/2 sum_i (L(i,i) x(i) + L(i+1,i) x(i+1) - c(i))^2
+//
+// Define the partial energies E(k) by summing over i<k  Then E(0) = 0, E(n) = E.
+// Let's simplify a bit further by defining
+//
+//   x = y + L^{-T} c
+//
+// so that
+//
+//   E = |L'y|^2/2 = y'LL'y/2
+//   E(k) = 1/2 sum_{i<k} (L(i,i) y(i) + L(i+1,i) y(i+1))^2
+//
+// Define the partial minimizations
+//
+//   ES(k,y(k-1)) = min_{y(i),i<k-1} E(k,y(0)...y(k-1))
+//
+// Each ES(k) is a piecewise convex quadratic function of y(k-1), infinite outside
+// a suitable interval.  Say we know ES(k), and want to compute ES(k+1).  We have
+//
+//   ES(k) = alpha(k-1) y(k-1)^2/2 + beta(k-1) y(k-1)   on each interval
+//   ES*(k+1,y(k-1),y(k)) = ES(k,y(k-1)) + 1/2 (L(k-1,k-1) y(k-1) + L(k,k-1) y(k))^2
+//                        = (alpha(k-1) + L(k-1,k-1)^2) y(k-1)^2/2 + beta(k-1) y(k-1) + L(k-1,k-1) L(k,k-1) y(k-1) y(k) + 1/2 L(k,k-1)^2 y(k)^2
+//
+// Now we need to minimize w.r.t y(k-1) keeping y(k) fixed
+//
+//   0 = d_y(k-1) ES*(k+1,y(k-1),y(k)) = (alpha(k-1) + L(k-1,k-1)^2) y(k-1) + (beta(k-1) + L(k-1,k-1) L(k,k-1))
+//   y_{k-1} = -(beta(k-1) + L(k-1,k-1) L(k,k-1)) / (alpha(k-1) + L(k-1,k-1)^2)
+//
+// This seems to be getting complicated fast.  What I need is some representation that remains mostly invariant when
+// a new point is added.  The flattened triangle strip case does this in a beautiful geometric fashion.  Thus, the
+// natural question is whether we can reproduce any quadratic program with a flat triangle strip.  My intuition is no,
+// since the flat triangle strip case is "close to indefinite".  But lets check anyways and see what goes wrong:
+//
+// Define Z(i) = X(i) + Y(i) x(i).  Ignoring constant terms, we have
+//
+//   E = 1/2 sum_i (Z(i)-Z(i+1))^2 = 1/2 sum_i (DX(i) + Y(i) x(i) - Y(i+1) x(i+1))^2
+//     = 1/2 sum_i 2DX(i).Y(i) x(i) + 2DX(i).Y(i+1) x(i+1) - 2Y(i).Y(i+1) x(i)x(i+1) + Y(i)^2 x(i)^2 + Y(i+1)^2 x(i+1)^2
+//     = 1/2 x'Ax + b'x
+//
+// where
+//
+//   A(i,i) = 2Y(i)^2
+//   A(i,i+1) = -Y(i).Y(i+1)
+//   b(i) = Y(i) . (X(i+1)-2X(i)-X(i-1))
+//
+// Now given A, the magnitudes of Y(i) are forced.  We can then choose the angles between Y(i) to get any offdiagonal terms that satisfy
+//
+//   |Y(i).Y(i+1)| <= |Y(i)| |Y(i+1)|
+//   |A(i,i+1)| <= sqrt(A(i,i)A(i+1,i+1))
+//
+// by Cauchy-Schwartz.  Is this inequality forced by SPD?  Well, the 2x2 case looks like
+//
+//   A = ( a b )
+//       ( c d )
+//
+//   a,d >= 0, ad-bc >= 0
+//   Y(0)^2,Y(1)^2 >= 0
+//   Y(0)^2 Y(1)^2 >= (Y(i).Y(i+1))^2
+//
+// and we're good.  Finally, the linear terms can be easily chosen arbitrarily by adjusting each X(i) in turn.  This gives a nice reduction
+// to the motivating geometric case.  The only difference, in fact, is that in the geometric triangle case the segments defined by
+// Z(i), 0 <= x(i) <= 1 touch.  Thus the general case is simply the geometric case with quads instead of triangles.
+// 
+// Actually, the other difference is that in the general case two adjacent segments are related arbitrarily; in particular, they can
+// intersect.  Assuming for the moment that segments don't intersect, the invariant situation that Keith and I came up with holds: at
+// each step, the energy function is defined by two opposing convex hulls that move upwards from the segment, eventually touching at
+// the furthest point reachable in a straight line from the segment.
+//
+// So what if they do intersect?  Does this situation even need to arise?  Well, we have freedom to choose DX(i+1) however we want to
+// achieve a particular value of DX(i+1) . Y(i).  Y(i) is the slope of a given segment.  Thus we can choose to move the segment as far
+// as we want away from the problematic intersection.  This is a bit weird actually, but I'm going to trust the algebra for the moment.
+// Trust in algebra!
+
+// Hmm, we may have a problem.  The sum of squared lengths of segments is not the same as the squared sum of lengths of segments.
+// Yes, that's a pretty serious problem.
+//
+// -----------------------------------------------------------------------------------------------------------------------------------------
+//
+// Okay, so I was confused.  Let's double down and try to massively generalize the problem, and we'll see if that magically fixes the situation.
+//
+// Consider an arbitrary convex "tridiagonal" program, of the form
+//
+//   min  E = sum_i f_i(x(i),x(i+1))
+//   s.t. lo <= x < = hi
+//
+// where each f_i is chosen from a suitable space of functions F.  For what function spaces F can we produce a direct linear time algorithm?
+// We already know that f(x,y) = length works.  It would be nice if at least quadratics worked as well.  Indeed, it'd be
+// odd if they didn't, since I'd naively expect quadratics to be easier to work with.  As before, we'll define
+//
+//   E_k = sum_{i<k} f_i(x(i),x(i+1))
+//   ES_k(x(k)) = min_{x(i),i<k} E_k(x(0)...x(k))
+//
+// Each ES(k) is a convex function.  Conjecture: if F is affine closed, ES(k) is piecewise F.  Actually, I think this is not true.  Let's see
+// what really happens.  Say we know ES(k), and want to learn ES(k+1).  We have
+//
+//   EE(x(k),x(k+1)) = ES(k,x(k)) + f(k,x(k),x(k+1))
+//   d_k EE(x(k),x(k+1)) = d_k ES(k,x(k)) + d_k f(x,x(k),x(k+1)) = 0
+//
+// Interestingly, for both quadratics and sqrt(quadratics) solving this equation results in a linear relationship between x(k+1) and x(k)
+// away from the constraints, and substituting this relationship into EE gives an ES(k+1) in F.  As before, we have an easy *quadratic*
+// time algorithm for the quadratic programming case, but trickery is required if we want to collapse it to linear.
+//
+// Back to convex/geometric intuition.  The length case works by iteratively removing unnecessary constraints, which in the length case
+// correspond to concavities in the quad strip walls.  In the quadratic case we can similarly ask: given three contiguous bound constraints,
+// is the middle constraint ever active?  Call these constraints A,B,C, and imagine no other constraints exist.  Let's consider the cases:
+//
+// 1. If A and C are active, B must be active.
+// 2. If A and C are active, B is never active.
+//
+// Exactly one of these must be true, since if A and B are active the value C's variable is fixed by relative energy minimization.
+// Indeed, the same holds even if there are other constraints between A and B or between B and C.
+//
+// Assume that there is only one bound constraint per variable.  Then we can iteratively prune away variables, merging energy terms as
+// appropriate, until we arrive at a series of constraints A_0 ... A_n s.t. if any two are active, everything between them will be active.
+// What about the ends?  If the first two constraints are A, B, there are two cases:
+//
+// 1. If B is active, A is active.
+// 2. If B is active, A is never active.
+//
+// Again, exactly one of these is true, even if there are constraints in between.  Let's try again: cases:
+//
+// 1. B implies that A is never active.
+// 2. 
+//
+// Ug.  What do we want?  We want that if we do a fully unconstrained solution, and any one of the constraints fails, it is active.
+// But this simply isn't true, which is why that was a hard property to arrive at.  Instead, we do an unconstrained solve, and check
+// if the first constraint is violated.  If it is, we resolve with that enforced, and see if the next constraint is active.  Now here's
+// what's true: if this second constraint fails, it is active.  If we look back at the last active constraint, and we can reduce energy
+// by inactivating that constraint, THEN THIS CONSTRAINT IS NOT ACTIVE IN THE SOLUTION.  TODO: This is the key reason why any of this
+// works, and needs to be carefully checked.  We may need to backwards for a while, unsnapping constraints as we go, until we hit one
+// that's still active.  This whole process takes linear time; it's exactly the same as convex hull of sorted points.
+//
+// ------------------------------------------------------------------------------------------------------------
+//
+// I think it's time to switch to latex.
+//
+// Okay, say F is "middle closed" if an unconstrained minimization of the middle term of the sum of two connected terms from F
+// lies in F.  Both length and quadratics are middle closed as we've discussed.  
+//
+// Quick digression: euclidean distance is convex.
+// |(x+y)/2| <= (|x|+|y|)/2
+
+\end{comment}
+
+\end{document}

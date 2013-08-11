@@ -3,3 +3,4 @@
 *.fls
 *.pdf
 .sconsign.dblite
+*.pyc

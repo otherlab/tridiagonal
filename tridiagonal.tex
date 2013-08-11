@@ -40,12 +40,12 @@
 \maketitle
 
 \begin{abstract}
-We present a linear time direct solver for symmetric positive definite tridiagonal quadratic programming with bound constraints, and for other nonlinear convex programs with similar structure.
-In particular, it applies to minimum length paths through triangle strips, the original motivation of this work.  The algorithm is an active set method similar to the standard approach for
-convex hull of a simple polygon: add one vertex at a time, then walk backwards eliminating concave vertices as far as necessary.
+We present a linear time direct solver for symmetric positive definite tridiagonal quadratic programming with bound constraints.  Our algorithm has exactly the same structure as an
+algorithm for linear time shortest paths in triangulated simple polygons by Lee and Preparata, but to our knowledge has not be previously applied to quadratic programming, motivating
+this short note.  The algorithm may be further generalizable to other nonlinear convex programs of similar structure, though we do not know of any such examples.
 \end{abstract}
 
-\section{Tridiagonal quadratic programming}
+\section{The geometric case}
 
 \TODO: For shortest paths in polygons, cite Lee and Preparata, Euclidean Shortest Paths in the Presence of Rectilinear Barriers.
 
@@ -60,23 +60,53 @@ where $x,l,u \in \R^n$ and $A$ is symmetric positive definite tridiagonal.  The 
 requires only an $O(n)$ tridiagonal direct solve; since interior point methods typically take between $O(1)$ and $O(\log n)$ iterations to converge (\TODO: reference), this results in a quite fast method overall.
 However, this peformance is not guaranteed (\TODO: is it?), and any iterative method will require more iterations if greater accuracy is required.
 
-In this paper, we present a linear time direct solver specialized for problems of the form (\ref{qp}), as well as other nonlinear convex optimization problems of similar form.  We first rewrite the quadratic
-energy function as the sum of energies of adjacent variables using the Cholesky decomposition $A = LL^T$:
+In this paper, we present a linear time direct solver specialized for problems of the form (\ref{qp}).  We discovered this algorithm by accident: we intended to derive an linear time algorithm
+for shortest paths (geodesics) in triangle strips immersed in three dimensions, but mistakenly wrote down a sum of squared lengths instead of the correct sum of unsquared lengths.  We then arrived at a linear time algorithm
+using geometric intuition before realizing that our motivating problem was not a quadratic program after all.  In fact, essentially the same algorithm works in both cases.  The shortest path case is due to
+Lee and Preparata (\TODO), but to our knowledge its application to quadratic programming is unpublished.
+
+We review the simplest geometric case first.  Consider a sequence of segments $p_i q_i$ with $p_i, q_i \in \mathbb{R}^d$ for $i = 0, \ldots, n$, forming a quadrilateral strip.  Place an interpolated point
+$r_i = (1-t_i) p_i + t_i q_i$ on each segment, where $0 \le t_i \le 1$.  Assume that the first and last points are fixed, so that $p_0 = q_0$ and $p_n = q_n$, and that adjacent segments do not intersect.
+We seek to minimize the total length
+\begin{align*}
+L &= \sum_{i=0}^{n-1} \left\| r_i - r_{i+1} \right\|.
+\end{align*}
+The algorithm proceeds by induction from $k = 0$ to $k = n-1$, where stage $k$ minimizes the length up to $r_k$ for the two extreme values $r_k = p_k, q_k$.  Since adjacent segments do not intersect, the optimal value
+of $t_i$ for $i < k$ is a monotonic function of $x_k$, so the optimal path for any intermediate value $0 < t_k < 1$ lies between the optimal paths for $t_k = 0,1$.  Thus, our intermediate state has the form shown in
+Figure (\ref{kite}): the two paths stay together for a certain distance, then break apart curving away in opposite directions.  Moving from $k$ to $k+1$ consists of adding new edges to each path, then eroding until
+we restore convexity.  For full details, see \TODO.
+
+\section{Tridiagonal quadratic programming}
+
+Now return to the quadratic program (\ref{qp}).  We first use the Cholesky decomposition $A = L L^T$ to convert the quadratic energy into a sum of energies of adjacent variables:
 \begin{align*}
 E &= \frac{1}{2} x^T A x + b^T x  \\
-  &= \frac{1}{2} x^T L L^T x + b^T x \\ 
-  &= \frac{1}{2} \left\|L^T x + L^{-1}b \right\|^2 + \textrm{const} \\
+  &= \frac{1}{2} x^T L L^T x + b^T x \\
+  &= \frac{1}{2} \left\|L^T x + L^{-1}b \right\|^2 - \frac{1}{2} b^T L^{-T} L^{-1} b
   &= \sum_{i=0}^{n-1} f_{i,i+1}(x_i,x_{i+1}) + \textrm{const}
 \end{align*}
 where
 \begin{align} \label{quadratic}
 f_{i,i+1}(x_i,x_{i+1}) = \frac{1}{2} (L_{i,i} x_i + L_{i+1,i} x_{i+1} + c_i)^2.
 \end{align}
-Here we have introduced sentinels $x_{n+1} = L_{n+1,n} = 0$ for notational simplicity.  For any $0 \le i < k \le n$, we define a function $f_{i,k}$ by partially minimizing over all variables between $x_i$ and $x_k$:
+Here we have introduced sentinels $x_{n+1} = L_{n+1,n} = 0$ for notational simplicity.  We then sweep through adjusting the signs of each $x_i$ so that $L_{i+1,i} \le 0$; since $L_{i,i} > 0$, this
+ensures that the local optimal value of $x_i$ is a weakly increasing function of $x_{i-1}$ and $x_{i+1}$.
+
+For any $0 \le i < k \le n$, we define a function $f_{i,k}$ by partially minimizing over all variables between $x_i$ and $x_k$:
 $$f_{i,k}(x_i,x_k) = \min_{x_{i+1}, \ldots, x_{k-1}} \sum_{i \le j < k} f_{j,j+1}(x_j,x_{j+1}).$$
 Since this minimization produces a linear system for the intermediate $x_j$, and substituting a linear function into a quadratic gives a quadratic, each $f_{i,k}$ is of the form (\ref{quadratic}) up to a constant,
-and we can combine $f_{i,j}$ and $f_{j,k}$ into $f_{i,k}$ in $O(1)$ time.  Intuitively, each $f_{i,k}$ encodes the set of optimal paths from $x_j$ to $x_k$ when bound constraints are ignored.  Note that $f_{0,n} = E$
-is the entire energy function.
+and we can combine $f_{i,j}$ and $f_{j,k}$ into $f_{i,k}$ in $O(1)$ time.  Intuitively, each $f_{i,k}$ encodes the set of optimal paths from $x_i$ to $x_k$ when bound constraints are ignored.  Note that $f_{0,n} = E$
+is the entire energy function up to a constant.
+
+As in the geometric case, our algorithm proceeds from $k = 0$ to $k = n-1$, maintaining two minimizers of the partial energy up to $x_k = l_k$ and $x_k = u_k$.  We represent the two partial minimizers in terms of
+their active constraints, and also store the partial energy function $f_{i,j}$ between any two adjacent active constraints.  The $x_k = l_k$ and $x_k = u_k$ paths will agree up to a certain $x_j$, then deviate
+in opposite directions with the $x_k = l_k$ path touching only $l_i$ constraints and the $x_k = u_k$ path touching only $u_i$ constraints.  To advance from $k$ to $k+1$, we extend the two partial solutions by adding
+$l_{k+1}$ and $u_{k+1}$ constraints, respectively, then remove constraints that violate local optimality starting from $l_k$ and $u_k$ until optimality is restored.  In the process we may erode the entire separate
+portion of one of our two paths, in which case we continue eroding the beginning of the other separate path, extending the common section of the paths in the process.  A constraint is considered for removal only
+when a neighbor is added or removed, and a constraint is added (resp.\ removed) at most once.  By maintaining $f_{i,j}$ between adjacent active constraints, we ensure that adding, checking, or removing a constraint all
+require $O(1)$ time, so the total complexity of the algorithm is $O(n)$.
+
+\TODO: RESUME HERE.
 
 \subsection{Algorithm}
 

@@ -50,44 +50,52 @@ def maxabs(x):
   x = asarray(x)
   return absolute(x).max() if x.size else 0
 
+def test_inverse():
+  random.seed(81731)
+  for n in 0,1,2,10,20:
+    for s in xrange(2):
+      A,_,_,_,_ = random_system(n)
+      B = TridiagonalInverse(A)
+      for i in xrange(n):
+        e = zeros(n)
+        e[i] = 1
+        Bi = linalg.solveh_banded(A.T,e,lower=True)
+        assert allclose(Bi[i],B.diag(i))
+        for j in xrange(n):
+          assert allclose(Bi[j],B(i,j))
+
 def test_qp():
-  tols = {'fast':2e-4,
+  tols = {'fast':2e-6,
           'slow':3e-9,
           'debug':1e-10}
-  verbose = False
+  verbose = 0
   random.seed(71183119)
-  for mode in 'slow fast'.split():
-    tol = tols[mode]
-    for n in xrange(20):
-      for i in xrange(10):
-        A,b,lo,hi,x = random_system(n)
-        #lo[:] = -1000
-        #hi[:] =  1000
-        #b[:] = 0
-        if 0 and n==2:
-          A[:] = [[1,-1],[2,0]]
-          lo[:] = [1,-1000]
-          A[0,1] = -abs(A[0,1])
-        if verbose:
-          print
-          print '-----------------------------------'
-          print 'mode = %s'%mode
-          print 'A =\n%s'%A.T
-          print 'b = %s'%b
-          print 'lo = %s'%lo
-          print 'hi = %s'%hi
-          print 'x = %s'%x
+  for n in xrange(20):
+    for i in xrange(10):
+      A,b,lo,hi,x = random_system(n)
+      if verbose:
+        print
+        print '-----------------------------------'
+        print 'A =\n%s'%A.T
+        print 'A =\n%s'%repr(list(map(list,A.T)))
+        print 'b = %s'%b
+        print 'lo = %s'%lo
+        print 'hi = %s'%hi
+        print 'x = %s'%x
+      for mode in 'slow fast'.split():
         x = tridiagonal_qp(A,b,lo,hi,mode=mode)
         if verbose:
           print
           print 'x = %s'%x
         e = tridiagonal_qp_error(A,b,lo,hi,x)
         en = maxabs(e)
-        if verbose:
+        tol = tols[mode]
+        if verbose or en>=tol:
+          print 'mode = %s'%mode
           print 'n %d, lo %d, hi %d'%(n,sum(abs(x-lo)<1e-10),sum(abs(x-hi)<1e-10))
           print 'e = %g\n%s'%(en,asarray(e))
         assert en<tol
 
 if __name__=='__main__':
-  set_printoptions(linewidth=200)
+  set_printoptions(linewidth=240,precision=4)
   test_qp()

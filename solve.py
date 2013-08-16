@@ -5,6 +5,71 @@ from numpy import *
 from collections import deque
 from scipy import linalg
 
+# Our representation for the inverse of a tridiagonal matrix has to deal with extremely large exponents.
+# Therefore, we use the representation x = (y,n) = y*2**n, where y is a float64 and n is an 
+large = dtype([('x',float64),('n',int64)])
+def aslarge(a):
+  assert all(a)
+  x,e = frexp(a)
+  return rec.fromarrays([x,e],dtype=large)
+def large_mul(a,b):
+  x,e = frexp(a.x*b.x)
+  return rec.fromarrays([x,e+a.n+b.n],dtype=large)
+def large_div(a,b):
+  x,e = frexp(a.x/b.x)
+  return rec.fromarrays([x,e+a.n-b.n],dtype=large)
+def large_approx(a):
+  return ldexp(a.x,a.n)
+
+class TridiagonalInverse(object):
+  '''A representation for the inverse of a tridiagonal matrix.  After O(n) construction, any coefficient can be computed in O(1) time.
+  For details, see Gerard Meurant (1992), "A review on the inverse of symmetric tridiagonal and block tridiagonal matrices."'''
+  
+  def __init__(self,A):
+    A = asarray(A)
+    n = len(A)
+    assert A.shape==(n,2)
+    if not n:
+      return
+    # We follow the notation from Meurant, except that indices begin at zero:
+    a = A[:,0]
+    b = -A[:,1]
+    b = copysign(maximum(abs(b),finfo(b.dtype).tiny),b)
+    d = empty_like(a)
+    d[n-1] = a[n-1]
+    for i in xrange(n-2,-1,-1):
+      d[i] = a[i]-b[i]**2/d[i+1]
+    e = empty_like(a) # e = \delta from Meurant
+    e[0] = a[0]
+    for i in xrange(1,n):
+      e[i] = a[i]-b[i-1]**2/e[i-1]
+    # Precompute partial products needed for theorem, using the large exponent storage defined above
+    dd = aslarge(hstack([d,1]))
+    ee = aslarge(hstack([e,1]))
+    for i in xrange(n-1,-1,-1):
+      dd[i] = large_mul(dd[i],dd[i+1])
+      ee[i] = large_mul(ee[i],ee[i+1])
+    bb = aslarge(hstack([1,b[:-1]]))
+    for i in xrange(1,n):
+      bb[i] = large_mul(bb[i],bb[i-1])
+    dd = dd[1:]
+    ee = ee[:-1]
+    stuff = large_approx(large_mul(large_mul(bb,bb),large_mul(dd,ee)))
+    assert all(stuff[:-1]>stuff[1:])
+    # Store
+    self.bb = bb
+    self.dd = dd
+    self.ee = ee
+
+  def diag(self,i):
+    return large_approx(large_div(self.dd[i],self.ee[i]))
+
+  def __call__(self,i,j):
+    if i > j:
+      i,j = j,i
+    return large_approx(large_div(large_mul(self.bb[j],self.dd[j]),
+                                  large_mul(self.bb[i],self.ee[i])))
+
 def tridiagonal_dot(A,x):
   '''Multiply a symmetric diagonal matrix times a vector.  For some reason, this is missing from scipy.'''
   assert A.shape==(len(x),2) 
@@ -112,36 +177,52 @@ def tridiagonal_qp(A,b,lo,hi,mode='fast'):
     return linalg.solveh_banded(A[i+1:k].T,jb,lower=True)[j-i-1]
 
   if mode in ('fast','debug'):
-    L = linalg.solveh_banded(A.T,hstack([1,zeros(n-1)]),lower=True)
-    R = linalg.solveh_banded(A.T,hstack([zeros(n-1),1]),lower=True)
-    LR = hstack([L[:,None],R[:,None]])
+    if 1:
+      B = TridiagonalInverse(A)
+    else:
+      C = zeros((n,n))
+      for i in xrange(n):
+        C[i,i] = A[i,0]
+      for i in xrange(n-1):
+        C[i,i+1] = C[i+1,i] = A[i,1]
+      C = linalg.inv(C)
+      class Bc(object):
+        def __call__(self,i,j):
+          return C[i,j]
+        def diag(self,i):
+          return C[i,i]
+      B = Bc()
 
     def fast_middle(i,xi,k,xk,j):
-      '''Compute xj given xi and xk unstably in O(1) time by cancelling linear combination weights'''
-      assert -1<=i<=j<=k<=n
-      assert 0<=j<n
+      '''Compute xj given xi and xk in O(1) time, using the explicit inverse B = A^{-1}'''
+      assert -1<=i<j<k<=n
       if 0<=i:
         if k<n:
-          # xi = Li a + Ri b
-          # xk = Lk a + Rk b
-          # xj = Lj a + Rj b
-          return dot(LR[j],linalg.solve(vstack([LR[i],LR[k]]),(xi,xk)))
+          # We seek y = a e_i + b e_k s.t. (B y)_i = x(i), (B y)_k = x(k).  That is
+          #   B(i,i) a + B(i,k) b = x(i)
+          #   B(k,i) a + B(k,k) b = x(k)
+          # This 2x2 symmetric matrix is a minor of B, so it can be stably used.
+          # Hmm, maybe it isn't so stable after all.  TODO: Try to work with it directly.
+          #   B(i,j) = b(i)...b(j-1) d(j+1)...d(n) / e(i)...e(n)   for i <= j
+          #   B(i,i) = d(i+1)...d(n) / e(i)...e(n)    
+          #   ( B(i,i) B(i,k) ) = ( dd(i+1)/ee(i)  bb(i,k)dd(k+1)/ee(i)  ) = dd(k+1)/ee(i) ( d(i+1)...d(k)    bb(i,k)    )
+          #   ( B(i,k) B(k,k) )   (     .            dd(k+1)/ee(k)       )                 (    bb(i,k)    e(i)...e(k-1) )
+          #   det = dd(i+1)dd(k)/(ee(i)ee(k)) - bb(i,k)^2 dd(k+1)^2/ee(i)^2
+          #       = dd(k+1)^2/ee(i)^2 (d(i+1)...d(k)e(i)...e(k-1) - bb(i,k)^2) 
+          #
+          #   C = 1/(B(i,i)B(k,k)-B(i,k)^2) (  B(k,k) -B(i,k) )
+          #                                 ( -B(i,k)  B(i,i) )
+          #   C (1 0)' = (B(k,k)-B(i,k)/(B(i,i)B(k,k)-B(i,k)^2)
+          Bik = B(i,k)
+          a,b = linalg.solve(((B.diag(i),Bik),(Bik,B.diag(k))),(xi,xk))
+          return B(j,i)*a + B(j,k)*b
         else: # k==n
-          assert xk is None
-          # b = 0
-          # xi = Li a + Ri b = Li a
-          # xj = Lj a + Rj b = Lj a
-          return xi*L[j]/L[i]
-      else: # -1==i
-        if k<n:
-          assert xi is None
-          # a = 0
-          # xk = Lk a + Rk b = Rk b
-          # xj = Lj a + Rj b = Rj b
-          return xk*R[j]/R[k]
-        else: # k==n
-          # If there are no outer constraints, x = 0 since we've shifted to b = 0 above.
-          return 0
+          # We seek y = a e_i s.t. (B y)_i = x(i).  Thus
+          return xi*B(j,i)/B.diag(i)
+      elif k<n: # -i==i
+        return xk*B(j,k)/B.diag(k)
+      else: # -i==i, k==n
+        return 0
 
   if mode=='slow':
     middle = slow_middle

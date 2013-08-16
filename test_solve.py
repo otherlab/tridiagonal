@@ -28,24 +28,6 @@ def random_system(n,cp=1/3):
   b = tridiagonal_dot(A,x)
   return A,b,lo,hi,x
 
-'''
-x0 x1
-
-A = ( 1  -1
-     -1   2 )
-
- x0 -  x1 = 0
--x0 + 2x1 = 0
-
-x0 = x1 = 0
-
-constraints:
-x0 >= 1
-x0 = 1
-x1 = 1/2
-
-'''
-
 def maxabs(x):
   x = asarray(x)
   return absolute(x).max() if x.size else 0

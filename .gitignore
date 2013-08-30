@@ -4,3 +4,7 @@
 *.pdf
 .sconsign.dblite
 *.pyc
+build
+SConstruct
+config.py
+setup.cfg

@@ -107,7 +107,7 @@ def tridiagonal_qp_error(A,b,lo,hi,x,tol=1e-10):
          * (1-((abs(x-hi)<tol)&(Ex<0)))) # If x==hi and Ex<0, the hi constraint is active
   return bound,kkt
 
-def tridiagonal_qp(A,b,lo,hi,mode='fast'):
+def slow_tridiagonal_qp(A,b,lo,hi,mode='fast'):
   '''Find x minimizing E = 1/2 x'Ax - b'x subject to lo <= x <= hi, where A is tridiagonal and symmetric positive definite.
   The algorithm is a linear time active set method analogous to convex hull of sorted points.
 
@@ -128,24 +128,6 @@ def tridiagonal_qp(A,b,lo,hi,mode='fast'):
   if n==0:
     return b
   assert mode in ('fast','slow','debug')
-
-  '''
-  # Compute cholesky factorization A = LL'.
-  L = scipy.linalg.cholesky_banded(A.T,lower=True).T
-  L[-1,1] = 0
-  assert all(L[:,0] > 0)
-  c = scipy.linalg.cho_solve_banded((L.T,True),b)
-  # Now E = 1/2 | L^T x + c |^2 + const
-  '''
-
-  '''
-  # Adjust signs so that L[:,1] <= 0
-  scale = 1-2*hstack([0,logical_xor.accumulate(L[:-1,1]>0)])
-  L[:-1,1] *= scale[1:]*scale[:-1]
-  c *= scale
-  lo *= scale
-  hi *= scale
-  '''
 
   # Offset x so that b = 0
   base = linalg.solveh_banded(A.T,b,lower=True)
@@ -299,69 +281,3 @@ def tridiagonal_qp(A,b,lo,hi,mode='fast'):
 
   # Extract the result and undo our simplifying transforms
   return base+scale*prefix[1:]
-
-'''
-    upper.append(entry)
-
-  Consider x0,x1,x2.  We can either have an energy
-
-    E = 1/2 (L00 x0 + L10 x1 + c0)^2 + 1/2 (L11 x1 + L21 x2 + c1)^2
-
-  or stick with the tridiagonal version
-
-    a10 x0 + a11 x1 + a12 x2 = b1
-
-  Naturally the tridiagonal version is easiest in terms of generating intermediate values, since
-
-    x1 = (b1 - a10 x0 - a12 x2) / a11
-
-  What about intermediate variable elimination?  Each variable is touched by three equations, which reduces to two matrix coefficients by symmetry.
-  Write di = aii, oi = d[i,i+1]
-
-    x0,x1,x2,x3,x4
-
-    o01 x0 + d1 x1 + o12 x2 = b1
-    o12 x1 + d2 x2 + o23 x3 = b2
-    o23 x2 + d3 x3 + o34 x4 = b3
-
-  Eliminating x2, we arrive at
-
-    x0,x1,x3,x4
-
-    x2 = (b2 - o12 x1 - o23 x3) / d2
-
-    o01 x0 + d1 x1 + o12 (b2 - o12 x1 - o23 x3) / d2 = b1
-    o01 x0 + (d1 - o12^2/d2) x1 - o23 o12/d2 x3 = b1 - b2 o12/d2
-
-    o23 (b2 - o12 x1 - o23 x3) / d2 + d3 x3 + o34 x4 = b3
-    -o12 o23/d2 x1 - (d3 - o23 o23/d2) x3 + o34 x4 = b3 - b2 o23/d2
-
-    o01,o34 unchanged 
-    d1 -> d1 - o12 o12/d2
-    b1 -> b1 - b2  o12/d2
-    d3 -> d3 - o23 o23/d2
-    b3 -> b3 - b2  o23/d2
-    o13 = -o23 o12/d2
-
-  What happens in the energy case?
-
-    E = 1/2 (L00 x0 + L10 x1 + c0)^2 + 1/2 (L11 x1 + L21 x2 + c1)^2
-    E_x1 = (L00 x0 + L10 x1 + c0) L10 + (L11 x1 + L21 x2 + c1) L11 = 0
-    x1 = - (c0 L10 + c1 L21 + L00 L10 x0 + L21 L11 x2) / (L10^2 + L11^2) = a0 x0 + a2 x2 + d
-    E = 
-
-  What about the tridiagonal case where b = 0?  We have
-
-    o01,o34 unchanged
-    d1 -> d1 - o12 o12/d2
-    d3 -> d3 - o23 o23/d2
-    o13 = -o23 o12/d2
-
-  Say initially all diagonal entries are 1 and offdiagonals are -o.  Cyclic elimination produces
-
-     d_ = 1 - o^2
-     o_ = -o^2
-   
-     d__ = d_ - o^4 / (1 - o^2) = 1 - o^2 - o^4/(1-o^2) = (1-2o^2+o^4 - o^4)/(1-o^2) = (1-2o^2)/(1-o^2) ~ (1-2o^2)(1+o^2+o^4
-     o__ = -o^4 / (1-o^2)
-'''

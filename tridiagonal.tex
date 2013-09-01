@@ -59,7 +59,7 @@ where $x,l,u \in \R^n$ and $A$ is symmetric positive definite tridiagonal.  The 
 for a survey).  Each Newton iteration requires only an $O(n)$ tridiagonal direct solve; since interior point methods typically take between $O(1)$ and $O(\log n)$ iterations to converge \cite{colombo2008further},
 this results in a quite fast method overall.  However, this peformance is not guaranteed, and any iterative method will require more iterations if greater accuracy is required.
 
-In this paper, we present a linear time direct solver specialized for problems of the form \autoref{qp}.  We discovered this algorithm by accident: we intended to derive an linear time algorithm
+In this paper, we present a linear time direct solver specialized for problems of the form (\autoref{qp}).  We discovered this algorithm by accident: we intended to derive an linear time algorithm
 for shortest paths (geodesics) in triangle strips immersed in three dimensions, but mistakenly wrote down a sum of squared lengths instead of the correct sum of unsquared lengths.  We then arrived at a linear time algorithm
 using geometric intuition before realizing that our motivating problem was not a quadratic program after all.  In fact, essentially the same algorithm works in both cases, although an extra data structure is required
 for quadratic programming as discussed below.  The shortest path case is due to Lee and Preparata \cite{lee1984euclidean}, but to our knowledge its application to quadratic programming is unpublished.
@@ -78,23 +78,23 @@ For full details, see \cite{lee1984euclidean}.
 
 \section{Tridiagonal quadratic programs}
 
-On to the quadratic program \autoref{qp}.  We first use the Cholesky decomposition $A = L L^T$ to convert the quadratic energy into a sum of energies of adjacent variables:
+On to the quadratic program (\autoref{qp}).  We first use the Cholesky decomposition $A = L L^T$ to convert the quadratic energy into a sum of energies of adjacent variables:
 \begin{align*}
 E &= \frac{1}{2} x^T A x + b^T x  \\
   &= \frac{1}{2} x^T L L^T x + b^T x \\
   &= \frac{1}{2} \left\|L^T x + L^{-1}b \right\|^2 - \frac{1}{2} b^T L^{-T} L^{-1} b \\
   &= \sum_{i=0}^{n-1} E_{i,i+1}(x_i,x_{i+1}) + \textrm{const}
 \end{align*}
-where
+using
 \begin{align} \label{quadratic}
-E_{i,i+1}(x_i,x_{i+1}) = \frac{1}{2} (L_{i,i} x_i + L_{i+1,i} x_{i+1} + c_i)^2.
+E_{i,i+1}(x_i,x_{i+1}) = \frac{1}{2} (L_{i,i} x_i + L_{i+1,i} x_{i+1} + c_i)^2
 \end{align}
-Here we have introduced sentinels $x_{n+1} = L_{n+1,n} = 0$ for notational simplicity.  We then sweep through adjusting the signs of each $x_i$ so that $L_{i+1,i} \le 0$; since $L_{i,i} > 0$, this
+where we have introduced sentinels $x_{n+1} = L_{n+1,n} = 0$ for notational simplicity.  We then sweep through adjusting the signs of each $x_i$ so that $L_{i+1,i} \le 0$; since $L_{i,i} > 0$, this
 ensures that the local optimal value of $x_i$ is a weakly increasing function of $x_{i-1}$ and $x_{i+1}$.
 
 For any $0 \le i < k \le n$, we define a function $E_{i,k}$ by partially minimizing over all variables between $x_i$ and $x_k$:
 $$E_{i,k}(x_i,x_k) = \min_{x_{i+1}, \ldots, x_{k-1}} \sum_{i \le j < k} E_{j,j+1}(x_j,x_{j+1}).$$
-This minimization produces a linear system for the intermediate $x_j$, and substituting a linear function into a quadratic gives a quadratic.  Thus each $E_{i,k}$ is of the form \autoref{quadratic} up to a constant,
+This minimization produces a linear system for the intermediate $x_j$, and substituting a linear function into a quadratic gives a quadratic.  Thus each $E_{i,k}$ is of the form (\autoref{quadratic}) up to a constant,
 and we can combine $E_{i,j}$ and $E_{j,k}$ into $E_{i,k}$ in $O(1)$ time.  $E_{i,k}$ encodes the set of optimal paths from $x_i$ to $x_k$ when bound constraints are ignored.  Note that $E_{0,n} = E$
 is the entire energy function up to a constant.
 

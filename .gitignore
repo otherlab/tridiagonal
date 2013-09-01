@@ -2,8 +2,11 @@
 *.log
 *.fls
 *.pdf
-.sconsign.dblite
+*.bbl
+*.blg
+*.out
 *.pyc
+.sconsign.dblite
 build
 SConstruct
 config.py

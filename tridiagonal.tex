@@ -55,21 +55,21 @@ structure, though we do not know of any such examples.
 
 \section{Background}
 
-Consider a symmetric positive definite tridiagonal quadratic program with bound constraints of the form
+Consider a symmetric positive definite tridiagonal quadratic program with bound constraints
 \begin{align} \label{qp}
 \begin{array}{cc}
 \min          \qquad& \frac{1}{2} x^T A x + b^T x \\
 \textrm{s.t.} & l \le x \le u
 \end{array}
 \end{align}
-where $x,l,u \in \R^n$ and $A$ is symmetric positive definite tridiagonal.  The problem is feasible iff $l \le u$, and can be solved efficiently using an interior point method (see \cite{gondzio2012interior}
-for a survey).  Each Newton iteration requires only an $O(n)$ tridiagonal direct solve; since interior point methods typically take between $O(1)$ and $O(\log n)$ iterations to converge \cite{colombo2008further},
+where $x,l,u \in \R^n$ and $A \in \R^{n \times n}$ is symmetric positive definite tridiagonal.  The problem is feasible iff $l \le u$, and can be solved efficiently using an interior point method (see \cite{gondzio2012interior}
+for a survey).  Each Newton iteration requires an $O(n)$ tridiagonal direct solve; since interior point methods typically take between $O(1)$ and $O(\log n)$ iterations to converge \cite{colombo2008further}
 this results in a quite fast method overall.  However, this peformance is not guaranteed, and any iterative method will require more iterations if greater accuracy is required.
 
-In this paper, we present a linear time direct solver specialized for problems of the form \cref{qp}.  We discovered this algorithm by accident: we intended to derive an linear time algorithm
+In this paper, we present a linear time direct solver specialized for \cref{qp}.  We discovered this algorithm by accident: we intended to derive an linear time algorithm
 for shortest paths (geodesics) in triangle strips immersed in three dimensions, but mistakenly wrote down a sum of squared lengths instead of the correct sum of unsquared lengths.  We then arrived at a linear time algorithm
 using geometric intuition before realizing that our motivating problem was not a quadratic program after all.  In fact, essentially the same algorithm works in both cases, although an extra data structure is required
-for quadratic programming as discussed below.  The shortest path case is due to Lee and Preparata \cite{lee1984euclidean}, but to our knowledge its application to quadratic programming is unpublished.
+for quadratic programming.  The shortest path case is due to Lee and Preparata \cite{lee1984euclidean}, but to our knowledge its application to quadratic programming is unpublished.
 
 We review the geometric case first.  Consider a sequence of segments $p_i q_i$ with $p_i, q_i \in \R^2$ for $i = 0, \ldots, n$, forming a quadrilateral strip.  Place an interpolated point
 $r_i = (1-t_i) p_i + t_i q_i$ on each segment, where $0 \le t_i \le 1$.  Assume that the first and last points are fixed, so that $p_0 = q_0$ and $p_n = q_n$, and that no two segments intersect.
@@ -108,14 +108,13 @@ using
 \begin{align} \label{quadratic}
 E_{i,i+1}(x_i,x_{i+1}) = \frac{1}{2} (L_{i,i} x_i + L_{i+1,i} x_{i+1} + c_i)^2
 \end{align}
-where we have introduced sentinels $x_{n+1} = L_{n+1,n} = 0$ for notational simplicity.  We then sweep through adjusting the signs of each $x_i$ so that $L_{i+1,i} \le 0$; since $L_{i,i} > 0$, this
+where we have introduced sentinels $x_{n+1} = L_{n+1,n} = 0$ for notational simplicity.  We sweep through adjusting the signs of each $x_i$ so that $L_{i+1,i} \le 0$; since $L_{i,i} > 0$, this
 ensures that the local optimal value of $x_i$ is a weakly increasing function of $x_{i-1}$ and $x_{i+1}$.
 
-For any $0 \le i < k \le n$, we define a function $E_{i,k}$ by partially minimizing over all variables between $x_i$ and $x_k$:
-$$E_{i,k}(x_i,x_k) = \min_{x_{i+1}, \ldots, x_{k-1}} \sum_{i \le j < k} E_{j,j+1}(x_j,x_{j+1}).$$
-This minimization produces a linear system for the intermediate $x_j$, and substituting a linear function into a quadratic gives a quadratic.  Thus each $E_{i,k}$ is of the form \cref{quadratic} up to a constant,
-and we can combine $E_{i,j}$ and $E_{j,k}$ into $E_{i,k}$ in $O(1)$ time.  $E_{i,k}$ encodes the set of optimal paths from $x_i$ to $x_k$ when bound constraints are ignored.  Note that $E_{0,n} = E$
-is the entire energy function up to a constant.
+For any $0 \le i < k \le n$, define a function $E_{ik}$ by partially minimizing over all variables strictly between $x_i$ and $x_k$:
+$$E_{ik}(x_i,x_k) = \min_{x_{i+1}, \ldots, x_{k-1}} \sum_{j = i}^{k-1} E_{j,j+1}(x_j,x_{j+1}).$$
+This minimization produces a linear system for the intermediate $x_j$.  Since substituting a linear function into a quadratic gives a quadratic, each $E_{ik}$ is of the form \cref{quadratic} up to a constant,
+and we can combine $E_{ij}$ and $E_{jk}$ into $E_{ik}$ in $O(1)$ time.  $E_{ik}$ encodes the set of optimal paths from $x_i$ to $x_k$ when bound constraints are ignored.
 
 \begin{figure}
 \begin{center}
@@ -195,11 +194,11 @@ their active constraints.  The $x_k = l_k$ and $x_k = u_k$ paths will agree up t
 in opposite directions with the $x_k = l_k$ path touching only $l_i$ constraints and the $x_k = u_k$ path touching only $u_i$ constraints.  To advance from $k$ to $k+1$, we extend the two partial solutions by adding
 $l_{k+1}$ and $u_{k+1}$ constraints, respectively, then remove constraints that violate local optimality starting from $l_k$ and $u_k$ until optimality is restored.  If we erode the entire separate
 portion of one of our two paths, we continue eroding the beginning of the other separate path, extending the common section of the paths.  This process is illustrated in \cref{erode}.
-A constraint is considered for removal only when a neighbor is added or removed, and a constraint is added (resp\. removed) at most once.  Thus, as long as we know the appropriate $E_{ij}$ when we need them, each step
+A constraint is considered for removal only when a neighbor is added or removed, and a constraint is added (resp.\ removed) at most once.  Thus, assuming we know the appropriate $E_{ij}$ when we need them, each step
 is amortized constant time, and the overall complexity is $O(n)$.
 
 Which $E_{ij}$ do we need?  Let the lower and upper paths have indices $(i_0, i_1, \ldots, i_a)$ and $(j_0, j_1, \ldots, j_b)$, respectively, where $i_0 = j_0$ is the last shared vertex of the paths
-and $i_a = j_b = k$ is the index just added.  When eroding the lower path from the left, we need energy terms $E_{i_{a-2}i_{a-1}}$ and $E_{i_{a-1}i_{a}}$, which are available as long as we maintain
+and $i_a = j_b = k$ is the index just added.  When eroding the lower path from the left, we need energy terms $E_{i_{a-2}i_{a-1}}$ and $E_{i_{a-1}i_{a}}$, which are available if we maintain
 energy terms between all adjacent indices $E_{i_0i_1}, E_{i_1i_2}, \ldots$ along the path.  When a new index is appended on the left we add a new energy term along with it, and if index $i_{a-1}$ is
 eliminated we reduce $E_{i_{a-2}i_{a-1}}$ and $E_{i_{a-1}i_{a}}$ into $E_{i_{a-2},i_a}$ in $O(1)$ time.
 
@@ -212,8 +211,8 @@ This cost is amortized $O(1)$ time by charging the computation of $E_{j p}$ to t
 
 This ``semigroup queue'' data structure is unnecessary for shortest paths in polygons because any $E_{ij}$ is available in $O(1)$ time using the coordinates of the input points.  However,
 it appears to be impossible to make all the $E_{ij}$ stably available up front for quadratic programming.\footnote{For failed attempts, see \url{http://scicomp.stackexchange.com/questions/8090}.}
-In particular, if $i < j < k$ we cannot stably compute $E_{ij}$ from $E_{ik}$ and $E_{jk}$, because the latter
-carry no information about $E_{ij}$ if $j$ and $k$ are uncoupled or nearly incoupled in the linear system.  In other words, the semigroup is not a group.
+This is because the semigroup is not a group: we cannot stably compute $E_{12}$ from $E_{13}$ and $E_{23}$, because the latter
+carry no information about $E_{12}$ if $x_2$ and $x_3$ are uncoupled in the linear system.
 Fortunately, the semigroup queue allows us to keep track of exactly those energy terms that we need while preserving stability.
 
 \section{Other nonlinear programs}
@@ -235,19 +234,19 @@ Expressed in terms of energy functions, our algorithm solves the optimization pr
 \textrm{s.t.} & l \le x \le u
 \end{array}
 \end{align*}
-Define $E_{ij}$ as above.  The algorithm works and runs in $O(n)$ time if the following properties hold:
+Define $E_{ij}$ as above.  The algorithm works in $O(n)$ time if the following properties hold:
 \begin{enumerate}
 \item For any $i < j < k$, we can combine $E_{ij}$ and $E_{jk}$ into $E_{ik}$ in $O(1)$ time.
 \item Given $E_{ij}$, $E_{jk}$, $x_i$, and $x_k$, we can compute the optimum value of $x_j$ in $O(1)$ time.
 \item For $i < j < k$, $x_j$ is a monotonic function of $x_i$ and $x_k$.
 \end{enumerate}
-Unfortunately, these properties are quite fragile, and we do not know of any useful examples beyond shortest paths in polygons and tridiagonal quadratic programming.  For example, if the index of
-refraction is allowed to vary across quadrilaterals in a quad strip, we can no longer combine $E_{ij}$ with $E_{jk}$ in $O(1)$ time, and the algorithm fails.
+Unfortunately, the first property is quite fragile, and we do not know of any useful examples beyond shortest paths in polygons and tridiagonal quadratic programming.  For example, if the index of
+refraction is allowed to vary across quadrilaterals in a quad strip for a shortest path problem, we can no longer combine $E_{ij}$ with $E_{jk}$ in $O(1)$ time, and the algorithm fails.
 
 \section{Implementation}
 
 A prototype implementation of the algorithm is available under a BSD-style license at \url{https://github.com/otherlab/tridiagonal}, along with the latex source of the paper.
-See \verb+tridiagonal_qp+ in \verb+module.cpp+ for the core algorithm.  As shown in \cref{benchmark}, the implementation is linear time in practice.  Git commit 
+The core algorithm is implemented in \verb+module.cpp:tridiagonal_qp()+.  As shown in \cref{benchmark}, the implementation is linear time in practice.  Git commit 
 \verb+282e5cd3fb86d+ was used for the benchmark.
 
 \bibliography{references}

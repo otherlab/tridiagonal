@@ -8,6 +8,7 @@
 \usepackage{comment}
 \usepackage{color}
 \usepackage{tikz}
+\usepackage{cprotect}
 \usepackage{hyperref}
 \usepackage[nameinlink,noabbrev]{cleveref}
 
@@ -182,7 +183,7 @@ is the entire energy function up to a constant.
   \end{tikzpicture}
 \end{center}
 \caption{A single step of the algorithm, drawn as if we were computing shortest paths.
-(1) We start from two paths ending at the $k-1$th lower and upper constraints.
+(1) We start from two paths ending at the $(k-1)$th lower and upper constraints.
 (2-3) The two paths are extended by adding $l_k$ and $u_k$ on the right, and the upper path is eroded from the right as far as possible.
 (4-5) Since the upper path erodes to a single line, we erode the lower path from the left using the upper $u_k$ constraint.
 (6-8) The lower path is eroded from the right in the same manner, arriving at the final $k$th state.
@@ -217,7 +218,17 @@ Fortunately, the semigroup queue allows us to keep track of exactly those energy
 
 \section{Other nonlinear programs}
 
-Expressed in terms of energy functions, our algorithm solves the following optimization problem:
+\begin{figure}[t]
+\begin{center}
+\includegraphics[width=.7\columnwidth]{benchmark.pdf}
+\end{center}
+\vspace{-.2in}
+\cprotect\caption{Benchmark timings for the prototype implementation on a 2.7 GHz Intel Core i7 MacBook Pro.  To reproduce this figure, run \verb+./benchmark --known 1+ in the source repository
+(leave out \verb+--known 1+ to regenerate timings).}
+\label{benchmark}
+\end{figure}
+
+Expressed in terms of energy functions, our algorithm solves the optimization problem
 \begin{align*}
 \begin{array}{cc}
 \min          \qquad& \sum E_{i,i+1}(x_i,x_{i+1}) \\
@@ -232,6 +243,11 @@ Define $E_{ij}$ as above.  The algorithm works and runs in $O(n)$ time if the fo
 \end{enumerate}
 Unfortunately, these properties are quite fragile, and we do not know of any useful examples beyond shortest paths in polygons and tridiagonal quadratic programming.  For example, if the index of
 refraction is allowed to vary across quadrilaterals in a quad strip, we can no longer combine $E_{ij}$ with $E_{jk}$ in $O(1)$ time, and the algorithm fails.
+
+\section{Implementation}
+
+A prototype implementation of the algorithm is available under a BSD-style license at \url{https://github.com/otherlab/tridiagonal}, along with the latex source of the paper.
+See \verb+tridiagonal_qp+ in \verb+module.cpp+ for the core algorithm.  As shown in \cref{benchmark}, the implementation is linear time in practice.
 
 \bibliography{references}
 \bibliographystyle{acm}

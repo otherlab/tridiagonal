@@ -1,0 +1,66 @@
+#!/usr/bin/env python
+
+from __future__ import division
+from other.core import *
+from tridiagonal import *
+from other.core.value import parser
+import test_solve
+import scipy
+import pylab
+import time
+
+# Parse arguments
+props = PropManager()
+count = props.add('count',1000000).set_help('Maximum number of input primitives')
+samples = props.add('samples',20).set_help('Number of benchmark samples')
+repetitions = props.add('repetitions',20).set_help('Number of repetitions per count')
+known = props.add('known',False).set_help('If true, plot performance results from the paper instead of performing a new benchmark')
+parser.parse(props,'Examples of symbolically perturbed algorithms',positional=[])
+
+def counts():
+  return linspace(0,count(),num=samples()+2)[1:-1].astype(int)
+
+# Timings reported in paper (count:(time,dev))
+tridiagonal_times = {523809:(0.08163033723831177,0.0031934146444375726),47619:(0.0059926748275756832,0.00039185810980666818),571428:(0.089752995967864985,0.0031528000116027846),95238:(0.013014614582061768,0.00042420609840322171),619047:(0.10009505748748779,0.0034921505124780017),142857:(0.021742880344390869,0.0011229144690215751),666666:(0.10634053945541382,0.0037724083685343707),190476:(0.02938915491104126,0.0008675098655596072),714285:(0.11257222890853882,0.0039890262228709887),238095:(0.037483847141265868,0.0013482091578548628),761904:(0.12066531181335449,0.0054407247648278409),285714:(0.045139324665069577,0.001575145164210271),809523:(0.12932014465332031,0.0053263912974632361),333333:(0.050242471694946292,0.002187546475485361),857142:(0.13711383342742919,0.0049019266754537147),380952:(0.063381063938140872,0.001972900873675409),904761:(0.14285126924514771,0.0048360709001185028),428571:(0.067854726314544672,0.002310755546470734),952380:(0.14967951774597169,0.0056431568220327672),476190:(0.073748695850372317,0.0028584316542873494)}
+
+def tridiagonal():
+  with Log.scope('tridiagonal'):
+    random.seed(17311)
+    shift = 1e-10
+    if known():
+      times = tridiagonal_times
+      times = asarray([times[c] for c in counts()])
+    else:
+      times = []
+      for c in counts():
+        raw = []
+        for _ in xrange(repetitions()):
+          A,b,lo,hi,_ = test_solve.random_system(c,shift=shift)
+          start = time.time()
+          tridiagonal_qp(A,b,lo,hi)
+          end = time.time()
+          raw.append(end-start)
+        t = mean(raw)
+        d = std(raw,ddof=1)
+        times.append((t,d))
+        Log.write('time %d = %g +- %g'%(c,t,d))
+    times = asarray(times)
+    slope,base = scipy.polyfit(counts(),times[:,0],deg=1)
+    logslope,logbase = scipy.polyfit(log(counts()),log(times[:,0]),deg=1)
+    Log.write('log: base = %g, slope = %g'%(logbase,logslope))
+    pylab.errorbar(counts(),times[:,0],yerr=times[:,1],fmt='.',label='running time')
+    c = asarray([0,count()])
+    pylab.plot(c,base+slope*c,'g',label='best fit line')
+    Log.write('times = %s'%(str(dict(zip(counts(),map(tuple,times)))).replace(' ','')))
+    pylab.legend(loc='lower right')
+    pylab.xlabel('system size')
+    pylab.ylabel('time (s)')
+    pylab.ylim(0)
+    pylab.show()
+
+def main():
+  Log.configure('benchmark',0,0,100)
+  tridiagonal()
+
+if __name__=='__main__':
+  main()

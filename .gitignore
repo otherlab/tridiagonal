@@ -6,6 +6,7 @@
 *.blg
 *.out
 *.pyc
+*.cpt
 .sconsign.dblite
 build
 SConstruct

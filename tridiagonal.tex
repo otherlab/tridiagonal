@@ -7,11 +7,17 @@
 \usepackage{subfig}
 \usepackage{comment}
 \usepackage{color}
+\usepackage{tikz}
 \usepackage{hyperref}
+\usepackage[nameinlink,noabbrev]{cleveref}
 
+\hypersetup{colorlinks=true,linkcolor=blue}
 \newcommand{\myspace}{\vspace{.1in}\noindent}
 \newcommand{\mymyspace}{\vspace{.1in}}
 \usepackage[inner=30mm, outer=30mm, textheight=225mm]{geometry}
+\creflabelformat{equation}{#2(#1)#3}
+\crefname{equation}{}{}
+\Crefname{equation}{}{}
 
 \newtheorem{theorem}{Theorem}[section]
 \newtheorem{prop}[theorem]{Proposition}
@@ -59,7 +65,7 @@ where $x,l,u \in \R^n$ and $A$ is symmetric positive definite tridiagonal.  The 
 for a survey).  Each Newton iteration requires only an $O(n)$ tridiagonal direct solve; since interior point methods typically take between $O(1)$ and $O(\log n)$ iterations to converge \cite{colombo2008further},
 this results in a quite fast method overall.  However, this peformance is not guaranteed, and any iterative method will require more iterations if greater accuracy is required.
 
-In this paper, we present a linear time direct solver specialized for problems of the form (\autoref{qp}).  We discovered this algorithm by accident: we intended to derive an linear time algorithm
+In this paper, we present a linear time direct solver specialized for problems of the form \cref{qp}.  We discovered this algorithm by accident: we intended to derive an linear time algorithm
 for shortest paths (geodesics) in triangle strips immersed in three dimensions, but mistakenly wrote down a sum of squared lengths instead of the correct sum of unsquared lengths.  We then arrived at a linear time algorithm
 using geometric intuition before realizing that our motivating problem was not a quadratic program after all.  In fact, essentially the same algorithm works in both cases, although an extra data structure is required
 for quadratic programming as discussed below.  The shortest path case is due to Lee and Preparata \cite{lee1984euclidean}, but to our knowledge its application to quadratic programming is unpublished.
@@ -72,13 +78,25 @@ L &= \sum_{i=0}^{n-1} \left\| r_i - r_{i+1} \right\|.
 \end{align*}
 The algorithm proceeds from $k = 0$ to $k = n-1$, where stage $k$ minimizes the length up to $r_k$ for the two extreme values $r_k = p_k, q_k$.  Since segments do not intersect, the optimal value
 of $t_i$ for $i < k$ is a monotonic function of $x_k$, so the optimal path for any intermediate value $0 < t_k < 1$ lies between the optimal paths for $t_k = 0,1$.  Thus, our intermediate state has the form shown in
-\autoref{kite}: the two paths stay together for a certain distance, then curve apart in opposite directions.  Moving from $k$ to $k+1$ consists of adding new edges to each path, then eroding until
+\cref{kite}: the two paths stay together for a certain distance, then curve apart in opposite directions.  Moving from $k$ to $k+1$ consists of adding new edges to each path, then eroding until
 we restore convexity.  To determine whether to remove a vertex at index $j$ between $i$ and $k$, we compute a shortest path between $r_i$ and $r_k$ and compare it to the bounds on $r_j$, which takes $O(1)$ time.
 For full details, see \cite{lee1984euclidean}.
 
+\begin{figure}
+\begin{center}
+\begin{tikzpicture}[thick,line join=round,line cap=round,scale=.7]
+  \draw (-6,.1) node[left]{$r_0$} -- (-4.5,1) -- (-3,-.2)  -- (-1.5,.7) -- (0,0) node[above]{$r_j$}; % shared
+  \draw (0,0) -- (1.8,.6) -- (3.3,1.6) -- (4.2,3.5) node[right]{$p_k$};      % upper
+  \draw (0,0) -- (1.5,-.4) -- (3,-1.6) -- (4.2,-3.5) node[right]{$q_k$};     % lower
+\end{tikzpicture}
+\end{center}
+\caption{Intermediate state of the linear time algorithm for shortest paths in quadrilateral strips.  The lower and upper parts stay together from $r_0$ to $r_j$, and then diverge in different directions
+following the active constraints $p_i$ and $q_i$. \label{kite}}
+\end{figure}
+
 \section{Tridiagonal quadratic programs}
 
-On to the quadratic program (\autoref{qp}).  We first use the Cholesky decomposition $A = L L^T$ to convert the quadratic energy into a sum of energies of adjacent variables:
+On to the quadratic program \cref{qp}.  We first use the Cholesky decomposition $A = L L^T$ to convert the quadratic energy into a sum of energies of adjacent variables:
 \begin{align*}
 E &= \frac{1}{2} x^T A x + b^T x  \\
   &= \frac{1}{2} x^T L L^T x + b^T x \\
@@ -94,15 +112,88 @@ ensures that the local optimal value of $x_i$ is a weakly increasing function of
 
 For any $0 \le i < k \le n$, we define a function $E_{i,k}$ by partially minimizing over all variables between $x_i$ and $x_k$:
 $$E_{i,k}(x_i,x_k) = \min_{x_{i+1}, \ldots, x_{k-1}} \sum_{i \le j < k} E_{j,j+1}(x_j,x_{j+1}).$$
-This minimization produces a linear system for the intermediate $x_j$, and substituting a linear function into a quadratic gives a quadratic.  Thus each $E_{i,k}$ is of the form (\autoref{quadratic}) up to a constant,
+This minimization produces a linear system for the intermediate $x_j$, and substituting a linear function into a quadratic gives a quadratic.  Thus each $E_{i,k}$ is of the form \cref{quadratic} up to a constant,
 and we can combine $E_{i,j}$ and $E_{j,k}$ into $E_{i,k}$ in $O(1)$ time.  $E_{i,k}$ encodes the set of optimal paths from $x_i$ to $x_k$ when bound constraints are ignored.  Note that $E_{0,n} = E$
 is the entire energy function up to a constant.
+
+\begin{figure}
+\begin{center}
+  \tikzset{kite/.style = {thick,line join=round,line cap=round,scale=.5}}
+  \begin{tikzpicture}[kite]
+    \draw (-6,.1) -- (-4.5,1) -- (-3,-.2)  -- (-1.5,.7) -- (0,0) node[above]{$x_{j_0}$} node[below]{$x_{i_0}$};
+    \draw (0,0) -- (2.7,.9) -- (4.2,3.5) node[right]{$u_{k-1}$};
+    \draw (0,0) -- (1.5,-.4) -- (3,-1.6) -- (4.2,-3.5) node[right]{$l_{k-1}$};
+    \draw (-5.5,-2) node[right]{(1) Start};
+  \end{tikzpicture}
+  % Erode upper right
+  \begin{tikzpicture}[kite]
+    \draw (-6,.1) -- (-4.5,1) -- (-3,-.2)  -- (-1.5,.7) -- (0,0) node[name=base]{};
+    \draw (0,0) -- (2.7,.9) -- (4.2,3.5) -- (5,-2.2) node[name=up,right]{$u_k$};
+    \draw (0,0) -- (1.5,-.4) -- (3,-1.6) -- (4.2,-3.5) -- (5,-3.8) node[name=down,right]{$l_k$};
+    \draw[red] (2.7,.9) -- (5,-2.2);
+    \filldraw[red] (4.2,3.5) circle (5pt);
+    \draw (-5.5,-2) node[right]{(2) Erode upper right};
+  \end{tikzpicture}
+  \begin{tikzpicture}[kite]
+    \draw (-6,.1) -- (-4.5,1) -- (-3,-.2)  -- (-1.5,.7) -- (0,0) node[name=base]{};
+    \draw (0,0) -- (2.7,.9) -- (5,-2.2) node[name=up,right]{$u_k$};
+    \draw (0,0) -- (1.5,-.4) -- (3,-1.6) -- (4.2,-3.5) -- (5,-3.8) node[name=down,right]{$l_k$};
+    \draw[red] (0,0) -- (5,-2.2);
+    \filldraw[red] (2.7,.9) circle (5pt);
+    \draw (-5.5,-2) node[right]{(3) Erode upper right};
+  \end{tikzpicture}
+  % Erode lower left
+  \begin{tikzpicture}[kite]
+    \draw (-6,.1) -- (-4.5,1) -- (-3,-.2)  -- (-1.5,.7) -- (0,0) node[name=base]{};
+    \draw (0,0) -- (1.5,-.4) -- (3,-1.6) -- (4.2,-3.5) -- (5,-3.8) node[name=down,right]{$l_k$};
+    \draw[red] (0,0) -- (5,-2.2) node[name=up,right,black]{$u_k$};
+    \filldraw[red] (1.5,-.4) circle (5pt);
+    \draw (-5.5,-2) node[right]{(4) Erode lower left};
+  \end{tikzpicture}
+  \begin{tikzpicture}[kite]
+    \draw (-6,.1) -- (-4.5,1) -- (-3,-.2)  -- (-1.5,.7) -- (0,0) node[name=base]{};
+    \draw (0,0) -- (1.5,-.4) -- (3,-1.6) -- (4.2,-3.5) -- (5,-3.8) node[name=down,right]{$l_k$};
+    \draw[blue] (1.5,-.4) -- (5,-2.2) node[name=up,right,black]{$u_k$};
+    \filldraw[blue] (3,-1.6) circle (5pt);
+    \draw (-5.5,-2) node[right]{(5) Lower left done};
+  \end{tikzpicture}
+  % Erode lower right
+  \begin{tikzpicture}[kite]
+    \draw (-6,.1) -- (-4.5,1) -- (-3,-.2)  -- (-1.5,.7) -- (0,0) node[name=base]{};
+    \draw (1.5,-.4) -- (5,-2.2) node[name=up,right]{$u_k$};
+    \draw (0,0) -- (1.5,-.4) -- (3,-1.6) -- (4.2,-3.5) -- (5,-3.8) node[name=down,right]{$l_k$};
+    \draw[red] (3,-1.6) -- (5,-3.8);
+    \filldraw[red] (4.2,-3.5) circle (5pt);
+    \draw (-5.5,-2) node[right]{(6) Erode lower right};
+  \end{tikzpicture}
+  \begin{tikzpicture}[kite]
+    \draw (-6,.1) -- (-4.5,1) -- (-3,-.2)  -- (-1.5,.7) -- (0,0) node[name=base]{};
+    \draw (1.5,-.4) -- (5,-2.2) node[name=up,right]{$u_k$};
+    \draw (0,0) -- (1.5,-.4) -- (3,-1.6) -- (5,-3.8) node[name=down,right]{$l_k$};
+    \draw[blue] (1.5,-.4) -- (5,-3.8);
+    \filldraw[blue] (3,-1.6) circle (5pt);
+    \draw (-5.5,-2) node[right]{(7) Lower right done};
+  \end{tikzpicture}
+  \begin{tikzpicture}[kite]
+    \draw (-6,.1) -- (-4.5,1) -- (-3,-.2)  -- (-1.5,.7) -- (0,0) node[name=base]{};
+    \draw (1.5,-.4) -- (5,-2.2) node[name=up,right]{$u_k$};
+    \draw (0,0) -- (1.5,-.4) -- (3,-1.6) -- (5,-3.8) node[name=down,right]{$l_k$};
+    \draw (-5.5,-2) node[right]{(8) Finished};
+  \end{tikzpicture}
+\end{center}
+\caption{A single step of the algorithm, drawn as if we were computing shortest paths.
+(1) We start from two paths ending at the $k-1$th lower and upper constraints.
+(2-3) The two paths are extended by adding $l_k$ and $u_k$ on the right, and the upper path is eroded from the right as far as possible.
+(4-5) Since the upper path erodes to a single line, we erode the lower path from the left using the upper $u_k$ constraint.
+(6-8) The lower path is eroded from the right in the same manner, arriving at the final $k$th state.
+\label{erode}}
+\end{figure}
 
 As in the geometric case, our algorithm proceeds from $k = 0$ to $k = n-1$, maintaining two minimizers of the partial energy up to $x_k = l_k$ and $x_k = u_k$.  We represent the two partial minimizers in terms of
 their active constraints.  The $x_k = l_k$ and $x_k = u_k$ paths will agree up to a certain $x_j$, then deviate
 in opposite directions with the $x_k = l_k$ path touching only $l_i$ constraints and the $x_k = u_k$ path touching only $u_i$ constraints.  To advance from $k$ to $k+1$, we extend the two partial solutions by adding
-$l_{k+1}$ and $u_{k+1}$ constraints, respectively, then remove constraints that violate local optimality starting from $l_k$ and $u_k$ until optimality is restored (\autoref{erode}a).  In the process we may erode the entire separate
-portion of one of our two paths, in which case we continue eroding the beginning of the other separate path, extending the common section of the paths in the process (\autoref{erode}b).
+$l_{k+1}$ and $u_{k+1}$ constraints, respectively, then remove constraints that violate local optimality starting from $l_k$ and $u_k$ until optimality is restored.  If we erode the entire separate
+portion of one of our two paths, we continue eroding the beginning of the other separate path, extending the common section of the paths.  This process is illustrated in \cref{erode}.
 A constraint is considered for removal only when a neighbor is added or removed, and a constraint is added (resp\. removed) at most once.  Thus, as long as we know the appropriate $E_{ij}$ when we need them, each step
 is amortized constant time, and the overall complexity is $O(n)$.
 
@@ -117,6 +208,12 @@ and we use a modified version of the ``two stack'' solution of sevenkplus\footno
 index $j_1 \le p \le j_b$, store $E_{j p}$ for $j < p$, and store $E_{p j_b}$.  $E_{j_1 j_b}$ is then available by combining $E_{j_1 p}$ with $E_{p j_b}$.  When a new element is appended to the left
 we update $E_{p j_b}$.  If index $j_1$ is eliminated nothing need be done unless $p < j_2$, in which case we reset the pivot to $p = j_b$ and recompute all $E_{j p}$ for $j < p$ in reverse order.
 This cost is amortized $O(1)$ time by charging the computation of $E_{j p}$ to the append operation which added $j$.  Note that the pivot index is not necessarily part of the path.
+
+This ``semigroup queue'' data structure is unnecessary for shortest paths in polygons because any $E_{ij}$ is available in $O(1)$ time using the coordinates of the input points.  However,
+it appears to be impossible to make all the $E_{ij}$ stably available up front for quadratic programming.\footnote{For failed attempts, see \url{http://scicomp.stackexchange.com/questions/8090}.}
+In particular, if $i < j < k$ we cannot stably compute $E_{ij}$ from $E_{ik}$ and $E_{jk}$, because the latter
+carry no information about $E_{ij}$ if $j$ and $k$ are uncoupled or nearly incoupled in the linear system.  In other words, the semigroup is not a group.
+Fortunately, the semigroup queue allows us to keep track of exactly those energy terms that we need while preserving stability.
 
 \section{Other nonlinear programs}
 

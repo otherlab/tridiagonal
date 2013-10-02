@@ -74,7 +74,7 @@ using geometric intuition before realizing that our motivating problem was not a
 for quadratic programming.  The shortest path case is due to Lee and Preparata \cite{lee1984euclidean}, but to our knowledge its application to quadratic programming is unpublished.
 
 We review the geometric case first.  Consider a sequence of segments $p_i q_i$ with $p_i, q_i \in \R^2$ for $i = 0, \ldots, n$, forming a quadrilateral strip.  Place an interpolated point
-$r_i = (1-t_i) p_i + t_i q_i$ on each segment, where $0 \le t_i \le 1$.  Assume that the first and last points are fixed, so that $p_0 = q_0$ and $p_n = q_n$, and that no two segments intersect.
+$r_i = (1-t_i) p_i + t_i q_i$ on each segment, where $0 \le t_i \le 1$.  Assume that the first and last points are fixed, so that $p_0 = q_0$ and $p_n = q_n$, and that each quadrilateral is convex.
 We seek to minimize the total length
 \begin{align*}
 L &= \sum_{i=0}^{n-1} \left\| r_i - r_{i+1} \right\|.
